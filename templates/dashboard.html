@@ -1,0 +1,20 @@
+<h2>Welcome, {{ current_user.email }}!</h2>
+
+<form method="POST">
+    <label>Your question:</label><br>
+    <textarea name = 'prompt' rows="3" cols="60" placeholder="Ask anything..."></textarea><br>
+    <button type="submit">Send</button>
+</form>
+
+<hr>
+
+<h3>Conversation History</h3>
+{% for item in history %}
+  <div style = "margin-bottom: 20px; border: 1px solid #ccc; padding: 10px; border-radius: 5px;">
+    <strong>You:</strong> {{ item.prompt }}<br>
+    <strong>GPT:</strong> {{ item.response }}<br>
+    <small>{{ item.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</small>
+  </div>
+{% else %}
+  <p>No conversation yet.</p>
+{% endfor %}
