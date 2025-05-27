@@ -4,11 +4,21 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from flask import render_template, redirect, url_for, request
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
-import os
-import openai
+from openai import OpenAI
 from dotenv import load_dotenv
-load_dotenv()
+import os
 
+# 获取当前脚本所在目录
+current_dir = os.path.dirname(os.path.abspath(__file__))
+env_path = os.path.join(current_dir, '.env')
+print(f"🔍 正在加载环境变量文件: {env_path}")
+load_dotenv(dotenv_path=env_path)
+
+# 立即验证环境变量是否加载
+print("🔍 环境变量加载状态:")
+print(f"OPENAI_API_KEY: {'已设置' if os.getenv('OPENAI_API_KEY') else '未设置'}")
+print(f"OPENAI_ORG_ID: {'已设置' if os.getenv('OPENAI_ORG_ID') else '未设置'}")
+print(f"OPENAI_PROJECT_ID: {'已设置' if os.getenv('OPENAI_PROJECT_ID') else '未设置'}")
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'thisissecret'
@@ -33,7 +43,7 @@ class User(UserMixin, db.Model):
 #ChatHistory表，存储用户对话记录
 class ChatHistory(db.Model):
     id = db.Column(db.Integer, primary_key = True)
-    user_id = db.Column(db.Text, nullable = False)
+    user_id = db.Column(db.Text, db.ForeignKey('user.id'))
     prompt = db.Column(db.Text, nullable = False)
     response = db.Column(db.Text, nullable = False)
     timestamp = db.Column(db.DateTime, default = datetime.utcnow)
@@ -78,10 +88,28 @@ def signup():
         return redirect(url_for('login'))
     return render_template('signup.html')
 
-@app.route('/dashboard')
+@app.route('/dashboard', methods = ['GET', 'POST'])
 @login_required
 def dashboard():
-    return f"Hello, {current_user.email}! Welcome to your dashboard."
+    if request.method == "POST":
+        user_input = request.form['prompt']
+
+        gpt_response = run_openai_chat(user_input)
+
+        #store into db
+        new_chat = ChatHistory(
+            user_id = current_user.id,
+            prompt = user_input,
+            response = gpt_response
+        )
+        db.session.add(new_chat)
+        db.session.commit()
+
+        return redirect(url_for('dashboard')) #避免刷新重复提交
+    
+    # GET，显示所有历史记录
+    history = ChatHistory.query.filter_by(user_id = current_user.id).order_by(ChatHistory.timestamp.desc()).all()
+    return render_template('dashboard.html', history = history)
 
 @app.route('/logout')
 @login_required
@@ -89,18 +117,24 @@ def logout():
     logout_user()
     return redirect(url_for('index'))
 
+client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),         # 你的 sk-proj- 开头的 token
+    organization=os.getenv("OPENAI_ORG_ID"),     # 从控制台复制 organization ID
+    project=os.getenv("OPENAI_PROJECT_ID")        # 从控制台复制 project ID
+)
+
 def run_openai_chat(prompt):
-    openai.api_key = os.getenv("OPENAI_API_KEY")
-    response = openai.ChatCompletion.create(
-        model = "gpt-3.5-turbo",
-        messages = [{"role": "user", "content": prompt}],
-        temperature = 0.7,
-        max_tokens = 512
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": prompt}]
     )
-    return response.choices[0].message["content"]
+    return response.choices[0].message.content
 
 if __name__ == '__main__':
-    print("✅ 当前使用的 OpenAI key:", os.getenv("OPENAI_API_KEY"))
+    print("🔑 API:", os.getenv("OPENAI_API_KEY"))
+    print("🏢 ORG:", os.getenv("OPENAI_ORG_ID"))
+    print("📁 PROJ:", os.getenv("OPENAI_PROJECT_ID"))
+
     with app.app_context():
         # 删除重复的db.create_all()调用
         db.create_all()
