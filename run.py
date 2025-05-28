@@ -120,6 +120,7 @@ def api_login():
 #         return redirect(url_for('login'))
 #     return render_template('signup.html')
 
+
 @app.route('/api/signup', methods=['POST'])
 def api_signup():
     data = request.json
