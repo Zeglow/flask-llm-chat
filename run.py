@@ -1,4 +1,6 @@
 from flask import Flask
+from flask_cors import CORS
+from flask import jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask import render_template, redirect, url_for, request
@@ -21,6 +23,8 @@ print(f"OPENAI_ORG_ID: {'已设置' if os.getenv('OPENAI_ORG_ID') else '未设�
 print(f"OPENAI_PROJECT_ID: {'已设置' if os.getenv('OPENAI_PROJECT_ID') else '未设置'}")
 
 app = Flask(__name__)
+CORS(app, supports_credentials=True)
+
 app.config['SECRET_KEY'] = 'thisissecret'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////Users/qiuweiyu/LLM-assistant/instance/db.sqlite'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # 关闭警告
@@ -55,67 +59,176 @@ class ChatHistory(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+# @app.route('/')
+# def index():
+#     return render_template('index.html')
+
+# @app.route('/login', methods=['GET', 'POST'])
+# def login():
+#     if request.method == 'POST':
+#         email = request.form['email']
+#         password = request.form['password']
+#         user = User.query.filter_by(email=email).first()
+#         if user and check_password_hash(user.password, password):
+#             login_user(user)
+#             return redirect(url_for('dashboard'))
+#         return 'Invalid credentials'
+#     return render_template('login.html')
+
+
+@app.route('/routes')
+def list_routes():
+    routes = []
+    for rule in app.url_map.iter_rules():
+        routes.append({
+            'endpoint': rule.endpoint,
+            'methods': list(rule.methods),
+            'rule': str(rule)
+        })
+    return jsonify(routes)
+
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    data = request.json
+    email = data.get('email')
+    password = data.get('password')
+
+    user = User.query.filter_by(email=email).first()
+    if user and check_password_hash(user.password, password):
+        login_user(user)
+        return jsonify({'message': 'Login successful'})
+    return jsonify({'message': 'Invalid credentials'}), 401
+
+
+
+
+# @app.route('/signup', methods=['GET', 'POST'])
+# def signup():
+#     if request.method == 'POST':
+#         email = request.form['email']
+#         password = generate_password_hash(request.form['password'], method='pbkdf2:sha256')
+        
+#         # 检查用户是否已存在
+#         existing_user = User.query.filter_by(email=email).first()
+#         if existing_user:
+#             return 'User already exists'
+        
+#         new_user = User(email=email, password=password)
+#         db.session.add(new_user)
+#         db.session.commit()
+#         return redirect(url_for('login'))
+#     return render_template('signup.html')
+
+@app.route('/api/signup', methods=['POST'])
+def api_signup():
+    data = request.json
+
+    #数据验证
+    if not data:
+        return jsonify({'message': 'No data provided'}), 400
+    
+    #获取原始邮箱+密码
+    email = data.get('email')
+    password = data.get('password')
+
+    #验证必填字段
+    if not email:
+        return jsonify({'message': 'Email is required'}), 400
+    
+    if not password:
+        return jsonify({'message': 'Password is required'}), 400
+    
+    #验证邮箱格式
+    if '@' not in email or '.' not in email:
+        return jsonify({'message': 'Invalid email format'}), 400
+    
+    #验证密码长度
+    if len(password) < 6:
+        return jsonify({'message': 'Password must be at least 6 characters'})
+    
+    #验证用户是否已存在
+    if User.query.filter_by(email=email).first():
+        return jsonify({'message': 'User already exists'}), 400
+    
+    #验证后再hash密码，创建新用户
+    hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
+    new_user = User(email=email, password=password)
+    db.session.add(new_user)
+    db.session.commit()
+
+    print("🟢 收到注册请求")
+    return jsonify({'message': 'User created'})
+
+
+# @app.route('/dashboard', methods = ['GET', 'POST'])
+# @login_required
+# def dashboard():
+#     if request.method == "POST":
+#         user_input = request.form['prompt']
+
+#         gpt_response = run_openai_chat(user_input)
+
+#         #store into db
+#         new_chat = ChatHistory(
+#             user_id = current_user.id,
+#             prompt = user_input,
+#             response = gpt_response
+#         )
+#         db.session.add(new_chat)
+#         db.session.commit()
+
+#         return redirect(url_for('dashboard')) #避免刷新重复提交
+    
+#     # GET，显示所有历史记录
+#     history = ChatHistory.query.filter_by(user_id = current_user.id).order_by(ChatHistory.timestamp.desc()).all()
+#     return render_template('dashboard.html', history = history)
+
+@app.route('/api/chat', methods=['POST'])
+@login_required
+def api_chat():
+    data = request.json
+    prompt = data.get('prompt')
+
+    gpt_response = run_openai_chat(prompt)
+
+    new_chat = ChatHistory(
+        user_id = current_user.id,
+        prompt = prompt,
+        response = gpt_response
+    )
+    db.session.add(new_chat)
+    db.session.commit()
+
+    return jsonify({'response': gpt_response})
+
+@app.route('/api/history', methods=['GET'])
+@login_required
+def api_history():
+    history = ChatHistory.query.filter_by(user_id=current_user.id).order_by(ChatHistory.timestamp.desc()).all()
+    result = [{
+        'prompt': h.prompt,
+        'response': h.response,
+        'timestamp': h.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+    } for h in history]
+    return jsonify(result)
+
+
+# @app.route('/logout')
+# @login_required
+# def logout():
+#     logout_user()
+#     return redirect(url_for('index'))
+
+@app.route('/api/logout', methods=['POST'])
+@login_required
+def api_logout():
+    logout_user()
+    return jsonify({'message': 'Logged out'})
+
 @app.route('/')
 def index():
-    return render_template('index.html')
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        email = request.form['email']
-        password = request.form['password']
-        user = User.query.filter_by(email=email).first()
-        if user and check_password_hash(user.password, password):
-            login_user(user)
-            return redirect(url_for('dashboard'))
-        return 'Invalid credentials'
-    return render_template('login.html')
-
-@app.route('/signup', methods=['GET', 'POST'])
-def signup():
-    if request.method == 'POST':
-        email = request.form['email']
-        password = generate_password_hash(request.form['password'], method='pbkdf2:sha256')
-        
-        # 检查用户是否已存在
-        existing_user = User.query.filter_by(email=email).first()
-        if existing_user:
-            return 'User already exists'
-        
-        new_user = User(email=email, password=password)
-        db.session.add(new_user)
-        db.session.commit()
-        return redirect(url_for('login'))
-    return render_template('signup.html')
-
-@app.route('/dashboard', methods = ['GET', 'POST'])
-@login_required
-def dashboard():
-    if request.method == "POST":
-        user_input = request.form['prompt']
-
-        gpt_response = run_openai_chat(user_input)
-
-        #store into db
-        new_chat = ChatHistory(
-            user_id = current_user.id,
-            prompt = user_input,
-            response = gpt_response
-        )
-        db.session.add(new_chat)
-        db.session.commit()
-
-        return redirect(url_for('dashboard')) #避免刷新重复提交
-    
-    # GET，显示所有历史记录
-    history = ChatHistory.query.filter_by(user_id = current_user.id).order_by(ChatHistory.timestamp.desc()).all()
-    return render_template('dashboard.html', history = history)
-
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    return redirect(url_for('index'))
+    return jsonify({'message': 'API is running'})
 
 client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),         # 你的 sk-proj- 开头的 token
