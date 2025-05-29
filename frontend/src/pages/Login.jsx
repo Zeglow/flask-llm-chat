@@ -10,9 +10,10 @@ function Login(){
 
     const handleLogin = async () => {
         try{
-            await axios.post('/login', { email, password });
+            await axios.post('/api/login', { email, password });
             navigate('/chat');
         } catch(err){
+            console.error("Login error:", err); 
             setError('Login failed. Please check credentials.');
         }
     };

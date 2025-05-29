@@ -154,7 +154,7 @@ def api_signup():
     
     #验证后再hash密码，创建新用户
     hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
-    new_user = User(email=email, password=password)
+    new_user = User(email=email, password=hashed_password)
     db.session.add(new_user)
     db.session.commit()
 
