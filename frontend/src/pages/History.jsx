@@ -6,7 +6,7 @@ function History() {
 
     useEffect(() => {
         const fetchHistory = async () => {
-            const res = await axios.get('/history');
+            const res = await axios.get('/api/history');
             setHistory(res.data);
         };
         fetchHistory();

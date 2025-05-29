@@ -8,11 +8,12 @@ function Chat(){
 
     const handleChat = async () => {
         try {
-            const res = await axios.post('/chat', { prompt: input});
-            setResponse(res.data.resonse);
+            const res = await axios.post('/api/chat', { prompt: input});
+            setResponse(res.data.response);
             setHistory([{ prompt: input, response: res.data.response }, ...history]);
             setInput('');
-        }catch(err){
+        } catch(err) {
+            console.error('Chat error:', err);
             setResponse('Error sending message');
         }
     };
@@ -26,14 +27,13 @@ function Chat(){
         <p>{response}</p>
         <hr />
         <h3>History(this session)</h3>
-        {history.map((item,index) =>(
+        {history.map((item, index) => (
             <div key={index}>
-                <strong>You:</strong>{item.prompt}<br />
-                <strong>GPT:</strong>{items.response}
+                <strong>You:</strong> {item.prompt}<br />
+                <strong>GPT:</strong> {item.response}
             </div>
         ))}
       </div>
-
     );
 }
 
